@@ -1,0 +1,763 @@
+﻿<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+    <title>Ember.js, REST API and SignalR</title>
+    <style>
+        BODY, P, TD {
+            font-family: Verdana, Arial, Helvetica, sans-serif;
+            font-size: 10pt;
+        }
+
+        H2, H3, H4, H5 {
+            color: #ff9900;
+            font-weight: bold;
+        }
+
+        H2 {
+            font-size: 13pt;
+        }
+
+        H3 {
+            font-size: 12pt;
+        }
+
+        H4 {
+            font-size: 10pt;
+            color: black;
+        }
+
+        PRE {
+            BACKGROUND-COLOR: #FBEDBB;
+            FONT-FAMILY: "Courier New", Courier, mono;
+            WHITE-SPACE: pre;
+        }
+
+        CODE {
+            COLOR: #990000;
+            FONT-FAMILY: "Courier New", Courier, mono;
+        }
+    </style>
+    <link rel="stylesheet" type="text/css" href="http://www.codeproject.com/App_Themes/Std/CodeProject.css">
+</head>
+<body bgcolor="#FFFFFF" color="#000000">
+
+<ul class="download">
+<li><a href="Ember_n_SignalR.zip">Download demo project - 2.08 MB</a></li>
+<li><a href="https://github.com/quinvit/quinvit/tree/master/Ember.n.SignalR">Download
+source - 1.7 MB</a></li>
+</ul>
+<p>
+<img width="632" height="591" alt="Sample Image - maximum width is 600 pixels" src="Sample.png" /></p>
+<h2>Introduction</h2>
+<p>Ember.js is a powerful JavaScript MVC framework to create complex web applications
+that eliminates boilerplate and provides a standard application architecture, it
+supports UI Bindings, Composed Views, Web Presentation Layers, and plays nicely with
+others. In order to create a real-time interaction web application, I add a SignalR hub
+and REST service with ASP.NET MVC.
+</p>
+<h2>MVC Basics</h2>
+<p>
+The purpose of MVC pattern is to separate concerns of view, model, and controller.
+The model is where data is kept, the view describes the presentation of application,
+and the controller acts as the link between the model and the view.</p><p><img width="200" height="219" src="MVC-Process.png" /></p>
+<p>This is a Ember.js's MVC implementation, client side part&nbsp;</p>
+<p><img width="505" height="641" src="embermvc.png" /></p>
+    <p>
+        There is another important concept in Ember.js, that is Router or StateManager,
+        it works mostly like ASP.NET MVC Route, but in client side. In this article, a router
+        do his responsibility as connecting the main controller to the main application view.
+        Ember.js uses Handlebars integrated templates, for easy creating and maintaining
+        views.
+    </p>
+    <h2>Set up project</h2>
+    <p>
+        At first, we need to create an empty ASP.NET MVC project, I use ASP.NET MVC4 with
+        Razor view engine, this is the <em>_Layout.cshtml</em>.</p>
+    <pre lang="xml">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+&lt;head&gt;
+    &lt;meta charset=&quot;utf-8&quot; /&gt;
+    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width&quot; /&gt;
+    &lt;title&gt;@ViewBag.Title&lt;/title&gt;
+    &lt;link href=&quot;../../Content/Site.css&quot; rel=&quot;stylesheet&quot; type=&quot;text/css&quot; /&gt;
+    &lt;script src=&quot;../../Scripts/libs/jquery-1.7.2.min.js&quot; type=&quot;text/javascript&quot;&gt;&lt;/script&gt;
+    &lt;script src=&quot;../../Scripts/libs/json3.min.js&quot; type=&quot;text/javascript&quot;&gt;&lt;/script&gt;
+    &lt;script src=&quot;../../Scripts/libs/handlebars-1.0.0-rc.4.js&quot; type=&quot;text/javascript&quot;&gt;&lt;/script&gt;
+    &lt;script src=&quot;../../Scripts/libs/ember-1.0.0-rc.6.js&quot; type=&quot;text/javascript&quot;&gt;&lt;/script&gt;
+    &lt;script src=&quot;../../Scripts/libs/ember-data.js&quot; type=&quot;text/javascript&quot;&gt;&lt;/script&gt;
+
+    &lt;script src=&quot;../../Scripts/jquery.signalR-1.0.0-alpha2.min.js&quot; type=&quot;text/javascript&quot;&gt;&lt;/script&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    @RenderBody()
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+<p>And <em>Index.cshtml</em>:</p>
+<pre lang="xml">@{
+    ViewBag.Title = &quot;Ember.n.SignalR&quot;;
+}
+&lt;script type=&quot;text/x-handlebars&quot;&gt;
+  {{outlet}}
+&lt;/script&gt;
+
+&lt;script type=&quot;text/x-handlebars&quot; data-template-name=&quot;application&quot;&gt;
+    {{view App.ApplicationView}}
+&lt;/script&gt;
+
+&lt;script src=&quot;../../Scripts/u.js&quot; type=&quot;text/javascript&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;../../Scripts/app.js&quot; type=&quot;text/javascript&quot;&gt;&lt;/script&gt;
+</pre>
+<ul>
+<li><em>u.js</em> contains two methods to random a string and a number in JavaScript</li>
+<li><em>app.js</em> contains all JavaScript code for the application.</li>
+</ul>
+
+    <h2>The Model in server side</h2>
+    <p>
+        We create simple customer DTO (in this example we use DTO as model) with basic information and simple result for REST
+        method.
+    </p>
+<div class="Caption">Customer.cs:</div>
+<pre lang="cs">[Serializable]
+public class Customer
+{
+    public Guid? Id { get; set; }
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+    public string Email { get; set; }
+    public string Phone { get; set; }
+    public bool Active { get; set; }
+}</pre>
+<div class="Caption">Result.cs</div>
+<pre lang="cs">public class Result
+{
+    public int ErrorCode { get; set; }
+    public object ErrorMessage { get; set; }
+    public object Data { get; set; }
+}</pre>
+<h2>The REST service</h2>
+<p>
+We already defined DTO, now we need to create a simple customer REST service transfer
+data in JSON format <em>CustomerController.cs</em> host at <em>/customer/</em>. To conform 
+naming conventions between C# and JavaScript JSON object,
+I use <code>Newtonsoft.Json.Serialization</code> with <code>CamelCasePropertyNamesContractResolver</code>.</p>
+<pre lang="cs">public class CustomerController : Controller
+{
+    [AcceptVerbs(HttpVerbs.Post)]
+    public string Read(Guid? id)
+    {
+        //...
+    }
+
+    [AcceptVerbs(HttpVerbs.Delete)]
+    public string Delete(Guid id)
+    {
+        //...
+    }
+
+    [AcceptVerbs(HttpVerbs.Put)]
+    public string Update(Customer customer)
+    {
+        //...
+    }
+
+    [AcceptVerbs(HttpVerbs.Post)]
+    public string Create(Customer customer)
+    {
+        //...
+    }
+}</pre>
+<p>About the data repository for customers, I create a simple implementation <em>CrudDS.cs</em>, storing data in the <em>~/App_Data/Customer.em</em> physical file in binary format.
+        Now all server side codes needed were done. We focus on Ember application architecture
+        in next step.
+    </p>
+    <h2>The Ember Application</h2>
+    <p>At a glance, we create an application object</p>
+    <pre lang="jscript">    function getView(name) {
+        var template = &#39;&#39;;
+        $.ajax(
+                {
+                    url: &#39;/Templates/&#39; + name + &#39;.htm&#39;,
+                    async: false,
+                    success: function (text) {
+                        template = text;
+                    }
+                });
+        return Ember.Handlebars.compile(template);
+    };
+
+    wnd.App = Ember.Application.create();</pre>
+
+</p><ul><li><code>getView</code>: method,
+        I define this method to synchronously get a template via Ajax, then use Handlebars
+        compile it to a view.</li></ul><p>
+
+    </p><h2>The Ember Model</h2>
+    <p>
+        We need to create a data store object at client side to interact with REST service
+        <em>/customer/</em>&nbsp;</p>
+    <pre lang="jscript">// Data store
+App.Store = Ember.Object.extend({
+    update: function (customer) {
+        var message = null;
+        var xhr = $.ajax(
+            {
+                url: '/customer/update/',
+                dataType: 'json',
+                contentType: 'application/json; charset=utf-8',
+                data: JSON.stringify(customer),
+                type: 'PUT',
+                async: false,
+                success: function (data) {
+                    message = data;
+                }
+            });
+
+        if (xhr.status != 200) { // error
+            message = { errorCode: xhr.status, errorMessage: xhr.statusText };
+        }
+
+        return message;
+    },
+    read: function (id) // !id read all
+    {
+        var message = null;
+        var xhr = $.ajax(
+            {
+                url: '/customer/read/',
+                dataType: 'json',
+                contentType: 'application/json; charset=utf-8',
+                data: JSON.stringify({ 'id': id }),
+                type: 'POST',
+                async: false,
+                success: function (data) {
+                    message = data;
+                }
+            });
+
+        if (xhr.status != 200) { // error
+            message = { errorCode: xhr.status, errorMessage: xhr.statusText };
+        }
+
+        return message;
+    },
+    remove: function (id) // !id delete all
+    {
+        var message = null;
+        var xhr = $.ajax(
+            {
+                url: '/customer/delete/',
+                dataType: 'json',
+                contentType: 'application/json; charset=utf-8',
+                data: JSON.stringify({ 'id': id }),
+                type: 'DELETE',
+                async: false,
+                success: function (data) {
+                    message = data;
+                }
+            });
+
+        if (xhr.status != 200) { // error
+            message = { errorCode: xhr.status, errorMessage: xhr.statusText };
+        }
+
+        return message;
+    },
+    create: function (customer) {
+        var message = null;
+        var xhr = $.ajax(
+            {
+                url: '/customer/create/',
+                dataType: 'json',
+                contentType: 'application/json; charset=utf-8',
+                data: JSON.stringify(customer),
+                type: 'POST',
+                async: false,
+                success: function (data) {
+                    message = data;
+                }
+            });
+
+        if (xhr.status != 200) { // error
+            message = { errorCode: xhr.status, errorMessage: xhr.statusText };
+        }
+
+        return message;
+    }
+});</pre>
+<p>
+        In previous part we already defined model in server side and the REST service just
+        return object in JSON format, in order binding it to views, we need to define it
+        as Ember model.
+    </p>
+    <pre lang="jscript">App.CustomerModel = Ember.Object.extend({
+    id: null,
+    firstName: null,
+    lastName: null,
+    email: null,
+    phone: null,
+    active: false,
+    quiet: false,
+    random: function () {
+        this.setProperties({ firstName: String.random(), lastName: String.random(), 
+                email: String.random().toLowerCase() + '@gmail.com', phone: '(097) ' + Number.random(3) + '-' + Number.random(4) });
+        return this;
+    },
+    plain: function () {
+        return this.getProperties(&quot;id&quot;, &quot;firstName&quot;, &quot;lastName&quot;, &quot;email&quot;, &quot;phone&quot;, &quot;active&quot;);
+    }
+});
+App.ResultModel = Ember.Object.extend({
+    errorCode: 0,
+    errorMessage: null
+});</pre>
+<ul>
+<li><code>random</code>: create a random customer by using two random methods in
+<em>u.js</em>.</li>
+<li><code>plain</code>: get back JSON object before send to REST service to improve performance (no need 
+for additional properties of <code>Ember.Object</code>).</li>
+</ul>
+  <h2>The Ember Controller</h2>
+<pre lang="jscript">App.CustomerController = Ember.Controller.extend({
+    store: App.Store.create(),
+    currentResult: null,
+    currentCustomer: null,
+    random: function () {
+        var customer = App.CustomerModel.create().random();
+        if (this.get('currentCustomer')) {
+            this.get('currentCustomer')
+                .set('active', false)
+                .setProperties(this.get('currentResult').data);
+        }
+        this.set('currentCustomer', customer);
+    },
+    create: function (customer) {
+        this.set('currentResult', this.get('store').create(customer.plain()));
+        if (!this.currentResult.errorCode) {
+            this.set('currentCustomer', App.CustomerModel.create());
+            var newCustomer = App.CustomerModel.create(this.get('currentResult').data);
+            this.get('customers').pushObject(newCustomer);
+        }
+    },
+    remove: function (id) {
+        var customer = this.get('customers').findProperty('id', id);
+        if (!customer) return;
+        this.set('currentResult', this.store.remove(customer.id));
+        if (!this.currentResult.errorCode) {
+            if (this.get('currentCustomer').id === id) {
+                this.set('currentCustomer', App.CustomerModel.create());
+            }
+            this.get('customers').removeObject(customer);
+        }
+    },
+    read: function (id) {
+        this.set('currentResult', this.store.read(id));
+        if (!this.currentResult.errorCode) {
+            if (Ember.isArray(this.currentResult.data)) { // Read all
+                var array = Ember.ArrayController.create({ content: [] });
+                this.currentResult.data.forEach(function (item, index) {
+                    array.pushObject(App.CustomerModel.create(item));
+                });
+                return array;
+            }
+            else { // An object
+                var customer = this.get('customers').findProperty('id', this.currentResult.data.id)
+                customer &amp;&amp; customer.setProperties(this.currentResult.data);
+                return customer;
+            }
+        }
+        else { // Empty result
+            return id ? null : Ember.ArrayController.create({ content: [] });
+        }
+    },
+    update: function (customer) {
+        this.set('currentResult', this.store.update(customer.plain()));
+        if (!this.currentResult.errorCode) {
+        }
+    },
+    save: function (customer) {
+        var customer = this.get('currentCustomer');
+        if (!customer.id) { // create
+            this.create(customer);
+        }
+        else { // edit
+            this.update(customer);
+        }
+    },
+    edit: function (id) {
+        if (this.get('currentCustomer').id != id) { // Rollback
+            this.get('currentCustomer')
+            .setProperties({ active: false })
+            .setProperties(this.get('currentResult').data);
+        }
+        else {
+            return;
+        }
+        var customer = this.read(id);
+        this.set('currentCustomer', customer.set('active', true));
+        this.set('currentResult',
+            App.ResultModel.create({
+                errorMessage: 'Click Submit to save current customer.',
+                data: customer.getProperties(&quot;firstName&quot;, &quot;lastName&quot;, &quot;email&quot;, &quot;phone&quot;) // Keep copy
+            }));
+    },
+    customers: Ember.ArrayController.create({ content: [] }),
+    initialize: function () {
+        var array = this.read();
+        this.set('customers', array);
+        this.random();
+        this.set('currentResult', App.ResultModel.create({ errorMessage: 'Click Submit to create new customer.' }));
+    }
+});
+App.applicationController = App.CustomerController.create();</pre>
+    <p>
+        Our <code>applicationController </code>controls logic when create, update or delete a customer, it stores
+        result of each action in <code>currentResult</code> property and stores 
+		editing/creating
+        customer in <code>currentCustomer</code> property. The customers array model is our customers
+        storage, it always be synchronized to server via <code>App.Store</code> and it is used to bind
+        to our views. We call <code>this.read()</code> to retrieve all customers from server when our
+        controller is initialized. Do you know why we must use get or set method here? That
+        is JavaScript way to deal with handling property changed. Actually in C#, the get/set
+        properties compiled to get/set methods in CLR.
+    </p>
+    <h2>The Ember View</h2>
+    <p>
+        We saw the connecting between controller and model, now we dig into views. The view
+        displays/binds values from / to model via controller anchor. I define view templates
+        in separated <em>htm</em> files, load it via AJAX and use&nbsp;<code>Ember.Handlebars</code>&nbsp;to compile the
+        response text, it is easier for modifying than putting it in script tag, we could use any
+        html editor such as MS Visual Studio, Notepad++...to edit view templates. Let see
+		<code>create_edit_customer</code> template, it is defined at <em>create_edit_customer.htm</em>.
+    </p>
+    <pre lang="xml">&lt;div id=&quot;mainForm&quot;&gt;
+    
+    &lt;div&gt;
+        &lt;label for=&quot;firstName&quot;&gt;
+            First name&lt;/label&gt;&lt;br /&gt;
+            {{view Ember.TextField valueBinding=&quot;controller.currentCustomer.firstName&quot;}}
+            &lt;a href=&quot;#&quot; {{action &quot;random&quot; on=&quot;click&quot; target=&quot;view&quot; }}&gt;Random new customer&lt;/a&gt;
+    &lt;/div&gt;
+    &lt;div&gt;
+        &lt;label for=&quot;lastName&quot;&gt;
+            Last name&lt;/label&gt;&lt;br /&gt;
+        {{view Ember.TextField valueBinding=&quot;controller.currentCustomer.lastName&quot;}}
+    &lt;/div&gt;
+    &lt;div&gt;
+        &lt;label for=&quot;email&quot;&gt;
+            Email&lt;/label&gt;&lt;br /&gt;
+        {{view Ember.TextField valueBinding=&quot;controller.currentCustomer.email&quot;}}
+    &lt;/div&gt;
+    &lt;div&gt;
+        &lt;label for=&quot;phone&quot;&gt;
+            Phone&lt;/label&gt;&lt;br /&gt;
+        {{view Ember.TextField valueBinding=&quot;controller.currentCustomer.phone&quot;}}
+    &lt;/div&gt;
+    &lt;p&gt;
+        &lt;button id=&quot;submit&quot; {{action &quot;save&quot; on=&quot;click&quot; target=&quot;view&quot; }} &gt;Submit&lt;/button&gt;
+    &lt;/p&gt;
+&lt;/div&gt;
+</pre>
+    <p>The <code>CreateEditCustomerView</code></p>
+    <pre lang="jscript">    App.CreateEditCustomerView = Ember.View.extend({
+        template: getView(&#39;create_edit_customer&#39;),
+        init: function () {
+            this._super();
+            this.set(&#39;controller&#39;, App.applicationController);
+        },
+        save: function (event) {
+            this.get(&#39;controller&#39;).send(&#39;save&#39;);
+        },
+        random: function () {
+            this.get(&#39;controller&#39;).send(&#39;random&#39;);
+        },
+        name: &quot;CreateEditCustomerView&quot;
+    });</pre>
+    <p>
+        As you see in the template, there are some <em>Handlebars </em>syntax, The first name text
+        box is defined as <code>{{view Ember.TextField valueBinding=&quot;controller.currentCustomer.firstName&quot;}}</code>. There are 2 actions in this
+        view, first is random a new customer and second is save a customer, in the template,
+        you easily found two lines <code>{{action &quot;random&quot; on=&quot;click&quot; target=&quot;view&quot; }}</code> and <code>{{action
+        &quot;save&quot; on=&quot;click&quot; target=&quot;view&quot; }}</code>. Both of those actions are click event.
+    </p>
+
+
+    <p>To display a list of customers, we need a template&nbsp;</p>
+
+    <pre lang="xml">&lt;div id=&quot;customerListHeader&quot;&gt;
+    List of customers
+&lt;/div&gt;
+&lt;div id=&quot;customerListContent&quot;&gt;
+    &lt;table&gt;
+        {{#unless controller.customers.length}}
+        &lt;tr&gt;
+            &lt;th&gt; First name &lt;/th&gt;
+            &lt;th&gt; Last name &lt;/th&gt;
+            &lt;th&gt; Email &lt;/th&gt;
+            &lt;th&gt; Phone &lt;/th&gt;
+        &lt;/tr&gt;
+        &lt;tr&gt;
+            &lt;td colspan=&quot;4&quot; align=&quot;center&quot;&gt;
+                There is no customer yet
+            &lt;/td&gt;
+        &lt;/tr&gt;
+        {{else}}
+        &lt;tr&gt;
+            &lt;th&gt; First name &lt;/th&gt;
+            &lt;th&gt; Last name &lt;/th&gt;
+            &lt;th&gt; Email &lt;/th&gt;
+            &lt;th&gt; Phone &lt;/th&gt;
+            &lt;th&gt; #Action &lt;/th&gt;
+        &lt;/tr&gt;
+        {{#each controller.customers}}
+        &lt;tr {{bindAttr class=&quot;this.active:active:normal&quot;}} {{bindAttr id=&quot;this.id&quot;}}&gt;
+            &lt;td&gt;
+                {{this.firstName}}
+            &lt;/td&gt;
+            &lt;td&gt;
+                {{this.lastName}}
+            &lt;/td&gt;
+            &lt;td&gt;
+                {{this.email}}
+            &lt;/td&gt;
+            &lt;td&gt;
+                {{this.phone}}
+            &lt;/td&gt;
+            &lt;td align=&quot;center&quot;&gt;
+                &lt;a href=&quot;#&quot; class=&quot;edit&quot; {{action &quot;edit&quot; on=&quot;click&quot; target=&quot;view&quot; }} {{bindAttr value=&quot;this.id&quot;}}&gt;Edit&lt;/a&gt;
+                |
+                &lt;a href=&quot;#&quot; class=&quot;delete&quot; {{action &quot;remove&quot; on=&quot;click&quot; target=&quot;view&quot; }} {{bindAttr value=&quot;this.id&quot;}}&gt;Delete&lt;/a&gt;
+            &lt;/td&gt;
+        &lt;/tr&gt;
+        {{/each}} 
+        {{/unless}}
+    &lt;/table&gt;
+&lt;/div&gt;
+</pre>
+    <p>The  <code>CustomerListV<code></code>iew</code>  </p>
+    <pre lang="jscript">    App.CustomerListView = Ember.View.extend({
+        template: getView(&#39;customer_list&#39;),
+        init: function () {
+            this._super();
+            this.set(&#39;controller&#39;, App.applicationController);
+        },
+        edit: function () {
+            var id = $(event.target).attr(&#39;value&#39;);
+            var controller = this.get(&#39;controller&#39;).send(&#39;edit&#39;, id);
+        },
+        remove: function () {
+            var id = $(event.target).attr(&#39;value&#39;);
+            var controller = this.get(&#39;controller&#39;);
+            this.animateItem(id, function () {
+                controller.send(&#39;remove&#39;, id);
+            }, controller);
+        },
+        animateItem: function (id, callback, target) {
+            $(&#39;#&#39; + id).animate({ opacity: 0 }, 200, &quot;linear&quot;, function () {
+                $(this).animate({ opacity: 1 }, 200);
+                if (typeof callback == &#39;function&#39;) {
+                    target = target | null;
+                    callback.call(target);
+                }
+            });
+        },
+        name: &quot;CustomerListView&quot;
+    });</pre>
+<p>Each action create/edit/delete customer, we need to display message result, in 
+<code>MessageView</code>, this is message template.</p>
+<pre lang="jscript">{{#unless controller.currentResult.errorCode}}
+&lt;div id=&#39;message&#39;&gt;
+    {{controller.currentResult.errorMessage}} &amp;nbsp;
+&lt;/div&gt;
+{{else}}
+&lt;div id=&#39;error&#39;&gt;
+    {{controller.currentResult.errorMessage}} &amp;nbsp;
+&lt;/div&gt;
+{{/unless}}</pre>
+
+    <p><code>CreateEditCustomerView</code>, <code>CustomerListView</code>, and 
+	<code>MessageView</code> are composed to <code>ApplicationView</code>, template defined in <em>main.htm</em>.</p>
+<pre lang="xml">&lt;h3&gt;{{view.Title}}&lt;/h3&gt;
+&lt;div&gt;
+    &lt;div id=&quot;message&quot;&gt;
+        {{view App.MessageView}}
+    &lt;/div&gt;
+    &lt;div id=&quot;createEditCustomer&quot;&gt;
+        {{view App.CreateEditCustomerView}}
+    &lt;/div&gt;
+    &lt;div id=&quot;customerList&quot;&gt;
+        {{view App.CustomerListView}}
+    &lt;/div&gt;
+&lt;/div&gt;
+
+&lt;div id=&quot;footer&quot;&gt;
+
+&lt;/div&gt;</pre>
+<pre lang="jscript">    App.ApplicationView = Ember.View.extend({
+        Title: &quot;Example of Ember.js application&quot;,
+        template: getView(&#39;main&#39;),
+        init: function () {
+            this._super();
+            this.set(&#39;controller&#39;, App.applicationController);
+        },
+        name: &quot;ApplicationView&quot;
+    });</pre>
+
+    <h2>The Ember Route</h2>
+    <p>
+        We already created application, controllers, views, models but there is one more thing to make our application work, a route.        
+
+        Route will connect application controller to application view, initialize application controller and in sequential order,
+        application view is bound/rendered to screen. In this example, I use default 
+        IndexRoute with path /. Now user can see, touch views and get right response from controllers.
+
+    </p>
+
+    <pre lang="jscript">    App.IndexRoute = Ember.Route.extend({
+        model: function () {
+            return App.applicationController.initialize();
+        }
+    });</pre>
+
+    <h2>Embedding SignalR&nbsp;</h2>
+    <p>
+        With Visual Studio, we can add SignalR from nuget.</p>
+        <pre lang="text">Install-Package Microsoft.AspNet.SignalR -pre</pre>
+        <p><em>RegisterHubs.cs</em> was automatically added in the folder <em>App_Start</em>.</p>
+    <pre lang="cs">using System.Web;
+using System.Web.Routing;
+using Microsoft.AspNet.SignalR;
+using Microsoft.AspNet.SignalR.Hosting.AspNet;
+
+[assembly: PreApplicationStartMethod(typeof(Ember.n.SignalR.RegisterHubs), &quot;Start&quot;)]
+
+namespace Ember.n.SignalR
+{
+    public static class RegisterHubs
+    {
+        public static void Start()
+        {
+            // Register the default hubs route: ~/signalr/hubs
+            RouteTable.Routes.MapHubs();
+        }
+    }
+}</pre>
+    <p>
+        We use <code>Hub</code> instead of <code>PersistentConnection</code> to easily create a communication from server with all clients
+    </p>
+    <pre lang="cs">namespace Ember.n.SignalR.Hubs
+{
+    using Ember.n.SignalR.DTOs;
+    using Microsoft.AspNet.SignalR.Hubs;
+    using Newtonsoft.Json;
+    using Newtonsoft.Json.Serialization;
+    using Microsoft.AspNet.SignalR;
+
+    public class CustomerHub : Hub
+    {
+        public static IHubContext Instance
+        {
+            get{
+                return GlobalHost.ConnectionManager.GetHubContext&lt;customerhub&gt;();
+            }
+        }
+
+        JsonSerializerSettings _settings = new JsonSerializerSettings
+        {
+            ContractResolver = new CamelCasePropertyNamesContractResolver(),
+            NullValueHandling = NullValueHandling.Ignore
+        };
+
+        public void Add(Customer customer)
+        {
+            Clients.All.add(JsonConvert.SerializeObject(customer, _settings));
+        }
+
+        public void Update(Customer customer)
+        {
+            Clients.All.update(JsonConvert.SerializeObject(customer, _settings));
+        }
+
+        public void Remove(Customer customer)
+        {
+            Clients.All.remove(JsonConvert.SerializeObject(customer, _settings));
+        }
+    }
+} </pre>
+    <p>
+        In order clients could communicate with server through SignalR pipeline, we need to include 
+		the hub script and implement <code>customerHub </code>in client side&nbsp;</p>
+        <p><em>&lt;script src=&quot;/signalr/hubs &quot; type=&quot;text/javascript&quot;&gt;&lt;/script&gt;</em>&nbsp;</p>
+    <pre lang="jscript">(function (App) {
+    var hub = $.connection.customerHub;
+
+    function findCustomer(id) {
+        var c = App.customerController.get('customers').findProperty('id', id);
+        return c;
+    }
+
+    hub.client.add = function (message) {
+        var customer = JSON.parse(message);
+        var c = findCustomer(customer.id);
+        !c &amp;&amp; App.customerController.get('customers').pushObject(App.CustomerModel.create(customer));
+    }
+
+    hub.client.update = function (message) {
+        var customer = JSON.parse(message);
+        var c = findCustomer(customer.id);
+        c &amp;&amp; c.set('quiet', true) &amp;&amp; c.setProperties(customer) &amp;&amp; c.set('quiet', false);
+    }
+
+    hub.client.remove = function (message) {
+        var customer = JSON.parse(message);
+        var c = findCustomer(customer.id);
+        if (c) {
+            if (c.id === App.customerController.get('currentCustomer').id) {
+                App.customerController.set('currentCustomer', null);
+                App.customerController.random();
+            }
+            App.customerController.get('customers').removeObject(c);
+        }
+    }
+
+    $.connection.hub.start();
+
+    App.hub = hub;
+
+})(window.App); </pre>
+    <p>
+        We simply manipulate models via <code>customerController</code>, <em>Ember.js binding</em> will take 
+		care the rest and ensure UI 
+        reflects the modified models right. &nbsp;</p><h2>The Ember Observers&nbsp;</h2><p>In previous section, after inject SignalR, each client already get real-time updating what's changed on the server . For more interesting, we use Ember observable to observe property changed when user typing and notify server via&nbsp;<code>customerHub</code>, &nbsp;after that server will broadcast the change to all clients.&nbsp;&nbsp;Let's add above lines of code&nbsp;to <code>CustomerModel&nbsp;</code>&nbsp;</p><p><code></code></p><pre lang="jscript">  propertyChanged: function () {
+            try {
+                if (!this.get('quiet') &amp;&amp; this.get('id')) {
+                    App.hub.server.update(this.plain());
+                }
+            }
+            catch (e) {
+
+            }
+        } .observes('firstName', 'lastName', 'email', 'phone', 'active'), </pre><p>We just notify server when <code>firstName</code>, <code>lastName</code>, <code>email</code>, <code>phone </code>or <code>active </code>property of existing customer changed. The <code>q<code></code>uiet </code>checking prevents loop notifying from client to server and server to client, when an object is getting changing from server, it will not notify server again that changing.&nbsp;</p><h2>Enjoy our work&nbsp;&nbsp;&nbsp;</h2><p>Now let build and run the web application, random a new customer and click submit. As you see on the screen, the UI changing works well without any DOM manipulation.&nbsp; Click edit link to edit and modify anything on first name, last name...text box,&nbsp;the edited row&nbsp;below reflects what we have just typed immediately.&nbsp;</p><p><img width="538" height="884" src="mirror.png" />&nbsp;</p><p>
+</p><p>To see how Ember.js interactw with SignalR, do copy the&nbsp;URL&nbsp;on the browser and paste to another browser window, arrange both windows near together, then create / edit / delete customer on the one, the other also got changed customer like a mirror.&nbsp;That is really cool right.&nbsp;</p>
+    
+
+
+    <h2>Conclusion&nbsp;</h2>
+    <p>
+        Controllers, views, models and routes in Ember.js work very similar with ASP.NET MVC, so who already worked with ASP.NET MVC
+        can easily understand and get benefit from Ember.js. This article just is an introduction about Ember.js, to make a complex
+        and real-time web application, we must dig into Ember objects more and more. SignalR in this example is a bridge, it makes sure
+        models in client side synchronized with server.
+
+    </p>
+
+    <h2>
+        References
+        
+    </h2>
+    <ul><li><a href="http://handlebarsjs.com/" target="_blank">http://handlebarsjs.com/</a></li>
+   <li><a href="http://emberjs.com/" target="_blank">http://emberjs.com/</a></li><li><a href="http://signalr.net/">http://signalr.net/&nbsp;&nbsp;</a></li>
+   </ul>
+
+</body>
+</html>
